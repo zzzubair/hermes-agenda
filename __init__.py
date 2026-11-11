@@ -15,6 +15,8 @@ HOME = Path(os.environ.get("HERMES_HOME") or os.path.expanduser("~/.hermes"))
 DIR = HOME / "agenda"
 OPEN, ARCHIVE, STATE = DIR / "open.json", DIR / "archive.jsonl", DIR / "seen.json"
 SOFT_CAP = 15
+TEXT_MAX, CONTEXT_MAX = 120, 300  # chars per item; enforced on add/edit
+DETAIL_HOURS = 48  # only items due this soon (or overdue) show their context line
 FULL_EVERY = 3600  # re-show the full list at least hourly per chat, else only when it changes
 
 
@@ -24,6 +26,11 @@ def _config():
         return yaml.safe_load(open(HOME / "config.yaml")) or {}
     except Exception:
         return {}
+
+
+def _setting(key, default):
+    s = ((_config().get("plugins") or {}).get("entries") or {}).get("agenda") or {}
+    return (s.get("settings") or {}).get(key) or default
 
 
 def _user():
@@ -115,25 +122,38 @@ def _set_wake(item, when, why):
                             f"Agenda [{item['id']}] {why}: {item['text']}. Check it, then act or message {_user()}; update the agenda.")
 
 
-def _render(items, now):
-    shown, hidden = [], 0
+def _render(items, now, budget=None):
+    """Open items, soonest first. Context lines only for items due within DETAIL_HOURS.
+    With a token budget (~4 chars/token), stop early and count what's left."""
     far = datetime.max.replace(tzinfo=_tz())
     key = lambda i: (datetime.fromisoformat(i["when"]) if i.get("when") else far, i["created"])
-    for it in sorted(items, key=key):
-        sn = it.get("snooze_until")
-        if sn and datetime.fromisoformat(sn) > now:
-            hidden += 1
-            continue
+    live = [i for i in sorted(items, key=key)
+            if not (i.get("snooze_until") and datetime.fromisoformat(i["snooze_until"]) > now)]
+    hidden = len(items) - len(live)
+    head = f"[agenda] {len(live)} open"
+    head += f", {hidden} snoozed" if hidden else ""
+    if len(live) > SOFT_CAP:
+        head += f". Over {SOFT_CAP}: tick, drop or merge stale items"
+    head += " (tool `agenda`: add/done/drop/snooze/edit/list/search; keep it true):"
+    lines, used, left = [head], len(head), 0
+    limit = budget * 4 if budget else None
+    for n, it in enumerate(live):
         tag = "you" if it["owner"] == "me" else _user()
         w = it.get("when")
-        when = f"{_rel(datetime.fromisoformat(w), now)}, {_fmt(w)}" if w else "NO DATE: set one"
-        ctx = (it.get("context") or "no context: add why/source/next step") + f" (added {_fmt(it['created'])})"
-        shown.append(f"- [{it['id']}] {when} | {tag}: {it['text']}\n    {ctx}")
-    head = f"[agenda] {len(shown)} open"
-    head += f", {hidden} snoozed" if hidden else ""
-    if len(shown) > SOFT_CAP:
-        head += f". Over {SOFT_CAP}: tick, drop or merge stale items"
-    return head + " (tool `agenda`: add/done/drop/snooze/edit/search; keep it true):\n" + "\n".join(shown)
+        wt = datetime.fromisoformat(w) if w else None
+        when = f"{_rel(wt, now)}, {_fmt(w)}" if w else "NO DATE: set one"
+        line = f"- [{it['id']}] {when} | {tag}: {it['text']}"
+        if not budget or (wt and (wt - now).total_seconds() < DETAIL_HOURS * 3600):
+            ctx = it.get("context") or "no context: add why/source/next step"
+            line += f"\n    {ctx} (added {_fmt(it['created'])})"
+        if limit and used + len(line) > limit:
+            left = len(live) - n
+            break
+        lines.append(line)
+        used += len(line) + 1
+    if left:
+        lines.append(f"+{left} later item(s) not shown: `agenda list` for all")
+    return "\n".join(lines)
 
 
 def on_pre_llm_call(**kw):
@@ -145,7 +165,7 @@ def on_pre_llm_call(**kw):
         if not items:
             return None
         now = _now()
-        body = _render(items, now)
+        body = _render(items, now, budget=int(_setting("max_tokens", 600)))
         h = hashlib.sha1(body.encode()).hexdigest()[:10]
         try:
             seen = json.loads(STATE.read_text())
@@ -177,6 +197,13 @@ def _archive(it, status, note):
         f.write(json.dumps(it, ensure_ascii=False) + "\n")
 
 
+def _too_long(args):
+    if len(args.get("text") or "") > TEXT_MAX:
+        return f"error: text over {TEXT_MAX} chars; shorten it (detail goes in context)"
+    if len(args.get("context") or "") > CONTEXT_MAX:
+        return f"error: context over {CONTEXT_MAX} chars; keep why/source/next step only"
+
+
 def handle(args, **_):
     a = args.get("action")
     items, now = _load(), _now()
@@ -188,6 +215,8 @@ def handle(args, **_):
             sn = [f"- [{i['id']}] snoozed until {_fmt(i['snooze_until'])} | {i['text']}"
                   for i in items if i.get("snooze_until") and datetime.fromisoformat(i["snooze_until"]) > now]
             return _render(items, now) + ("\nSnoozed:\n" + "\n".join(sn) if sn else "")
+        if a in ("add", "edit") and _too_long(args):
+            return _too_long(args)
         if a == "add":
             if not (args.get("when") and args.get("context")):
                 return "error: add needs `when` (today/tomorrow/this week/date/time) and `context` (why it matters, where it came from, next step)"
