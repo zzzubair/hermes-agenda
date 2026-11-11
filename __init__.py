@@ -138,7 +138,7 @@ def _render(items, now, budget=None):
     head += " (tool `agenda`: add/done/drop/snooze/edit/list/search; keep it true)"
     if due:
         head += (f". {due} due: raise ONE at a natural break (task just finished, or a casual message), never mid-task;"
-                 " if they defer, snooze it (no date given = tomorrow)")
+                 " if they defer, snooze it: 'later' = +2h, 'tomorrow' = tomorrow, or the time they name")
     head += ":"
     lines, used, left = [head], len(head), 0
     limit = budget * 4 if budget else None
@@ -247,7 +247,7 @@ def handle(args, **_):
             it = find(args.get("id"))
             if not it:
                 return f"no open item {args.get('id')!r}"
-            t = _parse_when(args.get("until") or "tomorrow")
+            t = _parse_when(args.get("until") or "+2h")
             it["snooze_until"] = t.isoformat(timespec="minutes")
             _log(it, "snoozed", f"until {_fmt(it['snooze_until'])}")
             if it.get("wake_id") and not args.get("keep_wake"):
@@ -301,7 +301,7 @@ SCHEMA = {
         "when": {"type": "string", "description": "required on add: when it must happen or be looked at"},
         "context": {"type": "string", "description": "required on add: why it matters, source, next step (1-2 lines)"},
         "remind_at": {"type": "string", "description": "hard deadlines only: schedules a wake that fires even if the user is silent"},
-        "until": {"type": "string", "description": "snooze: hide until this time (default tomorrow); no alarm"},
+        "until": {"type": "string", "description": "snooze: hide until this time (default +2h); no alarm"},
         "note": {"type": "string", "description": "done/drop: outcome, kept in the archive"},
         "query": {"type": "string", "description": "search: text to find in the archive"},
     }, "required": ["action"]},
