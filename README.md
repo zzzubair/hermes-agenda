@@ -40,4 +40,11 @@ Without the setting, reminders use `wake` if the wake plugin's `wake` command is
 
 Times use the `timezone` setting (empty = system timezone). Data lives in `$HERMES_HOME/agenda/` (`open.json`, `archive.jsonl`), never in this repo.
 
+## Disclosures
+
+- **Hook:** `pre_llm_call` runs on every turn and injects up to `max_tokens` of due items (nothing when nothing is due). Subagent turns get nothing.
+- **Stored in plaintext** under `$HERMES_HOME/agenda/`: `open.json` (open items), `archive.jsonl` (closed items, append-only), `seen.json` (which chat saw which list). No message text is stored.
+- **Shell commands:** only for hard-deadline reminders. With `reminders: wake` it runs the wake plugin's `wake add` / `wake cancel`; with `cron` it runs `hermes cron create` / `hermes cron remove` (one-shot jobs named `agenda-reminder`). `off` runs nothing.
+- **No network calls, no credentials, no telemetry, no background processes.**
+
 MIT licensed.
