@@ -4,7 +4,7 @@ Install the agenda plugin for me: https://github.com/zzzubair/hermes-agenda
 
 1. Run `hermes plugins install agenda` (if it isn't in the catalog on this Hermes, clone the repo into $HERMES_HOME/plugins/agenda), then `hermes plugins enable agenda`.
 2. Ask me what to call me and set plugins.entries.agenda.settings.user_name.
-3. Ask me for my timezone (IANA, e.g. Europe/London) and set plugins.entries.agenda.settings.timezone.
+3. Tell me the timezone this machine uses. Only if I say it's wrong for me, set plugins.entries.agenda.settings.timezone to mine (IANA, e.g. Asia/Tokyo). Otherwise leave it empty.
 4. Ask me how hard-deadline reminders should reach me when I'm not chatting. Explain each option in one line:
    - wake: install the wake plugin (https://github.com/zzzubair/hermes-wake). At the deadline you get woken and message me yourself.
    - cron: no extra plugin. A one-shot Hermes cron job posts the reminder to a channel I pick (telegram, discord, bot-chat, local). Ask which and set plugins.entries.agenda.settings.cron_deliver.

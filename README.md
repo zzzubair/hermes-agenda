@@ -15,15 +15,17 @@ Or by hand:
 ```bash
 hermes plugins install agenda
 hermes plugins enable agenda
-hermes config set plugins.entries.agenda.settings.user_name Alex
-hermes config set plugins.entries.agenda.settings.timezone Europe/London
-hermes config set plugins.entries.agenda.settings.reminders cron        # wake, cron or off
-hermes config set plugins.entries.agenda.settings.cron_deliver telegram # only for cron
 ```
 
-If `reminders` isn't set, the plugin uses `wake` when the wake plugin's `wake` command exists, and otherwise `cron` delivered to `local`, which only saves the reminder on disk. Snooze and the per-turn list work without either.
+That's enough to start. Optional settings, under `plugins.entries.agenda.settings` (set with `hermes config set`):
 
-An empty `timezone` means the system timezone.
+- `user_name`: what the agent calls you. Empty means "the user".
+- `timezone`: an IANA name such as `Asia/Tokyo`. Empty means the system timezone.
+- `reminders`: `wake`, `cron` or `off`. Empty means `wake` if the wake plugin's `wake` command exists, otherwise `cron` delivered to `local`, which only saves the reminder on disk.
+- `cron_deliver`: where `cron` reminders go, such as `telegram` or `discord`.
+- `max_tokens`: cap on what gets added per turn. Default 300.
+
+Snooze and the per-turn list work with none of these set.
 
 ## What it does
 
