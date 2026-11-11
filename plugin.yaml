@@ -1,11 +1,18 @@
 name: agenda
-version: "0.1.0"
+version: "1.0.0"
+author: Zubair Shaik
+requires_hermes: ">=0.23.0"
 description: "The agent's running todo list: shown every turn, one `agenda` tool to add/tick/drop/snooze/edit/search; closed items go to a searchable archive; reminders via the wake plugin."
 provides_hooks:
   - pre_llm_call
 provides_tools:
   - agenda
 config_schema:
+  timezone:
+    type: string
+    default: ""
+    label: Timezone
+    description: IANA timezone for item times (e.g. Europe/London). Empty uses the system timezone.
   user_name:
     type: string
     default: "the user"

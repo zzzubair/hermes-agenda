@@ -17,7 +17,7 @@ Install the agenda plugin for me: https://github.com/zzzubair/hermes-agenda
 
 1. Clone it into $HERMES_HOME/plugins/agenda (default ~/.hermes/plugins/agenda) and run `hermes plugins enable agenda`.
 2. Ask me what name to use for me, and set plugins.entries.agenda.settings.user_name with `hermes config set`.
-3. Check that Hermes's top-level `timezone` is set; if not, ask me for mine and set it.
+3. Ask me for my timezone (IANA, e.g. Europe/London) and set plugins.entries.agenda.settings.timezone.
 4. Ask me how hard-deadline reminders should reach me when I'm not chatting. Explain the three options in one line each:
    - wake: install the wake plugin (https://github.com/zzzubair/hermes-wake). You (the agent) get woken at that time and message me yourself, with context. Best experience, one extra plugin.
    - cron: no extra plugin. A one-shot Hermes cron job posts the reminder to a channel I choose (telegram, discord, bot-chat, local...). Ask which, and set plugins.entries.agenda.settings.cron_deliver.
@@ -38,6 +38,6 @@ hermes config set plugins.entries.agenda.settings.cron_deliver telegram   # only
 
 Without the setting, reminders use `wake` if the wake plugin's `wake` command is installed, otherwise `cron` to `local` (saved on disk, not pushed anywhere). Snooze and the per-turn list never need either.
 
-Times use Hermes's top-level `timezone`. Data lives in `$HERMES_HOME/agenda/` (`open.json`, `archive.jsonl`), never in this repo.
+Times use the `timezone` setting (empty = system timezone). Data lives in `$HERMES_HOME/agenda/` (`open.json`, `archive.jsonl`), never in this repo.
 
 MIT licensed.

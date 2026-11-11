@@ -2,7 +2,7 @@
 
 Open items live in $HERMES_HOME/agenda/open.json. Ticked or dropped items move to
 $HERMES_HOME/agenda/archive.jsonl (append-only, searchable) so nothing is lost.
-Personal settings (your name) come from config.yaml: plugins.entries.agenda.settings.
+Settings (user_name, timezone, reminders) come from plugins.entries.agenda.settings via the plugin context.
 A pre_llm_call hook shows the open list; one tool lets the model add, tick,
 drop, snooze, edit and search. Reminders reuse the `wake` CLI.
 """
@@ -22,29 +22,26 @@ INJECT_MAX = 5     # and at most this many; the rest are a count
 FULL_EVERY = 3600  # re-show the full list at least hourly per chat, else only when it changes
 
 
-def _config():
-    try:
-        import yaml
-        return yaml.safe_load(open(HOME / "config.yaml")) or {}
-    except Exception:
-        return {}
+_CTX = None  # PluginContext, set in register(); settings come only through it
 
 
 def _setting(key, default):
-    s = ((_config().get("plugins") or {}).get("entries") or {}).get("agenda") or {}
-    return (s.get("settings") or {}).get(key) or default
+    try:
+        v = _CTX.get_config(key) if _CTX else None
+    except Exception:
+        v = None
+    return default if v in (None, "") else v
 
 
 def _user():
-    s = ((_config().get("plugins") or {}).get("entries") or {}).get("agenda") or {}
-    return (s.get("settings") or {}).get("user_name") or "the user"
+    return _setting("user_name", "the user")
 
 
 def _tz():
     try:
-        return ZoneInfo(_config().get("timezone") or "UTC")
+        return ZoneInfo(_setting("timezone", "")) if _setting("timezone", "") else datetime.now().astimezone().tzinfo
     except Exception:
-        return ZoneInfo("UTC")
+        return datetime.now().astimezone().tzinfo
 
 
 def _now():
@@ -359,5 +356,7 @@ SCHEMA = {
 
 
 def register(ctx):
+    global _CTX
+    _CTX = ctx
     ctx.register_tool(name="agenda", toolset="agenda", schema=SCHEMA, handler=handle, emoji="📋")
     ctx.register_hook("pre_llm_call", on_pre_llm_call)
