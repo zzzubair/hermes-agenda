@@ -134,7 +134,12 @@ def _render(items, now, budget=None):
     head += f", {hidden} snoozed" if hidden else ""
     if len(live) > SOFT_CAP:
         head += f". Over {SOFT_CAP}: tick, drop or merge stale items"
-    head += " (tool `agenda`: add/done/drop/snooze/edit/list/search; keep it true):"
+    due = sum(1 for i in live if i.get("when") and datetime.fromisoformat(i["when"]) <= now)
+    head += " (tool `agenda`: add/done/drop/snooze/edit/list/search; keep it true)"
+    if due:
+        head += (f". {due} due: raise ONE at a natural break (task just finished, or a casual message), never mid-task;"
+                 " if they defer, snooze it (no date given = tomorrow)")
+    head += ":"
     lines, used, left = [head], len(head), 0
     limit = budget * 4 if budget else None
     for n, it in enumerate(live):
@@ -242,10 +247,11 @@ def handle(args, **_):
             it = find(args.get("id"))
             if not it:
                 return f"no open item {args.get('id')!r}"
-            t = _parse_when(args["until"])
+            t = _parse_when(args.get("until") or "tomorrow")
             it["snooze_until"] = t.isoformat(timespec="minutes")
             _log(it, "snoozed", f"until {_fmt(it['snooze_until'])}")
-            _set_wake(it, t, "snooze ended")
+            if it.get("wake_id") and not args.get("keep_wake"):
+                _wake("cancel", it.pop("wake_id"))
             _save(items)
             return f"snoozed [{it['id']}] until {_fmt(it['snooze_until'])}"
         if a == "edit":
@@ -281,7 +287,9 @@ SCHEMA = {
     "description": (
         "Your running todo list, shown to you every turn. Add anything you owe the user or are waiting on them for. "
         "Every item needs `when` (today, tomorrow, this week, a date or a time: when it must happen or be looked at) "
-        "and `context` (why it matters, where it came from, the next step). remind_at and snooze schedule a wake so you poke them. "
+        "and `context` (why it matters, where it came from, the next step). Items are raised in conversation when due, not by alarms. "
+        "Use remind_at ONLY for hard deadlines that must fire even if the user is silent (flight check-in, a renewal cutoff, a timed job of yours). "
+        "Snooze hides an item until a time; it comes back into this list then, with no alarm. "
         "Tick (done) or drop items the moment they resolve, with a short note; they move to a searchable archive. "
         "Keep it under 15 open: merge or drop stale items. Times: today, tomorrow, this week, next week, +2h, 14:30, 2026-11-20, 2026-11-20 14:30."
     ),
@@ -292,8 +300,8 @@ SCHEMA = {
         "owner": {"type": "string", "enum": ["me", "user"], "description": "who has the next move (default me)"},
         "when": {"type": "string", "description": "required on add: when it must happen or be looked at"},
         "context": {"type": "string", "description": "required on add: why it matters, source, next step (1-2 lines)"},
-        "remind_at": {"type": "string", "description": "when to bring it up (schedules a wake)"},
-        "until": {"type": "string", "description": "snooze: hide until this time, then wake"},
+        "remind_at": {"type": "string", "description": "hard deadlines only: schedules a wake that fires even if the user is silent"},
+        "until": {"type": "string", "description": "snooze: hide until this time (default tomorrow); no alarm"},
         "note": {"type": "string", "description": "done/drop: outcome, kept in the archive"},
         "query": {"type": "string", "description": "search: text to find in the archive"},
     }, "required": ["action"]},
