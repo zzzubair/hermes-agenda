@@ -317,11 +317,11 @@ def handle(args, **_):
 SCHEMA = {
     "name": "agenda",
     "description": (
-        "Your running todo list, shown to you every turn. Add anything you owe the user or are waiting on them for. "
+        "Your running todo list. Items due within 24h are shown to you each turn; `list` shows the rest. Add anything you owe the user or are waiting on them for. "
         "Every item needs `when` (today, tomorrow, this week, a date or a time: when it must happen or be looked at) "
         "and `context` (why it matters, where it came from, the next step). Items are raised in conversation when due, not by alarms. "
         "Use remind_at ONLY for hard deadlines that must fire even if the user is silent (flight check-in, a renewal cutoff, a timed job of yours). "
-        "Snooze hides an item until a time; it comes back into this list then, with no alarm. "
+        "Snooze hides an item until a time; it comes back into this list then, with no alarm. If the user defers: 'later' = +2h, 'tomorrow' only if they say it, else the time they name. "
         "Tick (done) or drop items the moment they resolve, with a short note; they move to a searchable archive. "
         "Keep it under 15 open: merge or drop stale items. Times: today, tomorrow, this week, next week, +2h, 14:30, 2026-11-20, 2026-11-20 14:30."
     ),
