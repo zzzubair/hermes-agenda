@@ -107,10 +107,28 @@ def _save(items):
 
 
 def _wake(cmd, *args):
+    """Hard-deadline alarms. Backend from settings.reminders: "wake" (wake plugin: the agent itself
+    is woken in your chat), "cron" (one-shot Hermes cron job delivered to settings.cron_deliver),
+    or "off". Returns an id ("cron:<id>" for cron) or None."""
+    backend = _setting("reminders", "wake" if shutil.which("wake") or (HOME / "bin" / "wake").exists() else "cron")
     try:
+        if cmd == "cancel" and args and str(args[0]).startswith("cron:"):
+            subprocess.run(["hermes", "cron", "remove", args[0][5:]], capture_output=True, timeout=30)
+            return None
+        if backend == "off":
+            return None
+        if backend == "cron":
+            if cmd != "add":
+                return None
+            when = datetime.strptime(args[0], "%Y-%m-%d %H:%M").replace(tzinfo=_tz())
+            out = subprocess.run(["hermes", "cron", "create", when.isoformat(timespec="minutes"), args[1],
+                                  "--name", "agenda-reminder", "--repeat", "1",
+                                  "--deliver", _setting("cron_deliver", "local")],
+                                 capture_output=True, text=True, timeout=30).stdout
+            m = re.search(r"Created job: ([0-9a-f]{12})", out)
+            return f"cron:{m[1]}" if m else None
         exe = shutil.which("wake") or str(HOME / "bin" / "wake")
-        out = subprocess.run([exe, cmd, *args],
-                             capture_output=True, text=True, timeout=20).stdout
+        out = subprocess.run([exe, cmd, *args], capture_output=True, text=True, timeout=20).stdout
         m = re.search(r"wake ([0-9a-f]{12})", out)
         return m[1] if m else None
     except Exception:
