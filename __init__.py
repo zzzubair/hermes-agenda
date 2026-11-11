@@ -319,7 +319,7 @@ SCHEMA = {
     "description": (
         "Your running todo list. Items due within 24h are shown to you each turn; `list` shows the rest. Add anything you owe the user or are waiting on them for. "
         "Every item needs `when` (today, tomorrow, this week, a date or a time: when it must happen or be looked at) "
-        "and `context` (why it matters, where it came from, the next step). Items are raised in conversation when due, not by alarms. "
+        "and `context` (why it matters, where it came from, the next step). Items are raised in conversation when due, not by alarms. Security alerts (sign-ins, password or recovery changes) and money at risk are never agenda items: tell the user right away. "
         "Use remind_at ONLY for hard deadlines that must fire even if the user is silent (flight check-in, a renewal cutoff, a timed job of yours). "
         "Snooze hides an item until a time; it comes back into this list then, with no alarm. If the user defers: 'later' = +2h, 'tomorrow' only if they say it, else the time they name. "
         "Tick (done) or drop items the moment they resolve, with a short note; they move to a searchable archive. "
