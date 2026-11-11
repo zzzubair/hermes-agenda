@@ -16,7 +16,9 @@ DIR = HOME / "agenda"
 OPEN, ARCHIVE, STATE = DIR / "open.json", DIR / "archive.jsonl", DIR / "seen.json"
 SOFT_CAP = 15
 TEXT_MAX, CONTEXT_MAX = 120, 300  # chars per item; enforced on add/edit
-DETAIL_HOURS = 48  # only items due this soon (or overdue) show their context line
+DETAIL_HOURS = 48  # `agenda list`: items due this soon show their context line
+INJECT_HOURS = 24  # per-turn injection: only items due within this window (or overdue)
+INJECT_MAX = 5     # and at most this many; the rest are a count
 FULL_EVERY = 3600  # re-show the full list at least hourly per chat, else only when it changes
 
 
@@ -161,6 +163,34 @@ def _render(items, now, budget=None):
     return "\n".join(lines)
 
 
+def _render_due(items, now, budget):
+    """Per-turn view: only what's due within INJECT_HOURS (max INJECT_MAX), one line each,
+    context only for overdue/due-now items. Nothing due -> inject nothing."""
+    live = [i for i in items if not (i.get("snooze_until") and datetime.fromisoformat(i["snooze_until"]) > now)]
+    due = sorted((i for i in live if i.get("when") and
+                  (datetime.fromisoformat(i["when"]) - now).total_seconds() < INJECT_HOURS * 3600),
+                 key=lambda i: i["when"])
+    if not due:
+        return None
+    head = (f"[agenda] {len(due)} due within {INJECT_HOURS}h of {len(live)} open "
+            "(tool `agenda`; `list` for the rest). Raise ONE at a natural break, never mid-task; "
+            "'later' = snooze +2h:")
+    lines, limit = [head], budget * 4
+    for n, it in enumerate(due[:INJECT_MAX]):
+        wt = datetime.fromisoformat(it["when"])
+        tag = "you" if it["owner"] == "me" else _user()
+        line = f"- [{it['id']}] {_rel(wt, now)}, {_fmt(it['when'])} | {tag}: {it['text']}"
+        if wt <= now:
+            line += f"\n    {it.get('context', '')}"
+        if sum(len(l) + 1 for l in lines) + len(line) > limit:
+            break
+        lines.append(line)
+    more = len(due) - (len(lines) - 1)
+    if more > 0:
+        lines.append(f"+{more} more due: `agenda list`")
+    return "\n".join(lines)
+
+
 def on_pre_llm_call(**kw):
     try:
         sid = str(kw.get("session_id") or "")
@@ -170,7 +200,9 @@ def on_pre_llm_call(**kw):
         if not items:
             return None
         now = _now()
-        body = _render(items, now, budget=int(_setting("max_tokens", 600)))
+        body = _render_due(items, now, budget=int(_setting("max_tokens", 300)))
+        if not body:
+            return None
         h = hashlib.sha1(body.encode()).hexdigest()[:10]
         try:
             seen = json.loads(STATE.read_text())

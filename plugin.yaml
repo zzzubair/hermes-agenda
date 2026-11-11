@@ -13,6 +13,6 @@ config_schema:
     description: Who the agent works for; shown on items they own and in reminder prompts.
   max_tokens:
     type: integer
-    default: 600
+    default: 300
     label: Context budget (tokens)
-    description: Max size of the list injected each turn (about 4 characters per token). Later items collapse into a count; `agenda list` shows everything.
+    description: Max size of the per-turn injection (about 4 chars per token). Only items due within 24h are injected (max 5); nothing due means nothing injected. `agenda list` shows everything.
