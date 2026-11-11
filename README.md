@@ -1,6 +1,6 @@
-# agenda
+# Agenda
 
-A Hermes plugin that gives your agent its own todo list. The agent brings items up in conversation when they're due.
+A [Hermes Agent](https://github.com/NousResearch/hermes-agent) plugin that gives your agent its own todo list.
 
 ## Install
 

@@ -1,4 +1,6 @@
-# Install agenda (prompt for a Hermes agent)
+# Install Agenda
+
+Agenda is a [Hermes Agent](https://github.com/NousResearch/hermes-agent) plugin that gives your agent its own todo list. This file is the install prompt for a Hermes agent.
 
 Install the agenda plugin for me: https://github.com/zzzubair/hermes-agenda
 
