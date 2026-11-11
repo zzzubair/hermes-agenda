@@ -2,30 +2,12 @@
 
 A Hermes plugin that gives your agent its own todo list. The agent brings items up in conversation when they're due.
 
-- One `agenda` tool with `add`, `done`, `drop`, `snooze`, `edit`, `list` and `search`.
-- Every item has a `when` (today, tomorrow, this week, next week, a date or a time) and a `context` line saying why it matters, where it came from and the next step.
-- Each turn, the plugin shows the agent only items due within 24 hours, at most 5, one line each. Overdue items also get their context line. When nothing is due, it adds nothing. `agenda list` shows the rest.
-- Snooze hides an item until a time. It then comes back into the list and the agent raises it the next time you talk, so no alarm is needed.
-- Every change is timestamped. Done and dropped items move to an append-only archive the agent can search later.
-- Hard deadlines (`remind_at`) can reach you even when you're not chatting. Setup below picks how.
-- `max_tokens` (default 300) caps what gets added per turn. Item text is limited to 120 characters and context to 300.
-
 ## Install
 
 Paste this to your Hermes agent:
 
 ```text
-Install the agenda plugin for me: https://github.com/zzzubair/hermes-agenda
-
-1. Run `hermes plugins install agenda` (if it isn't in the catalog on this Hermes, clone the repo into $HERMES_HOME/plugins/agenda), then `hermes plugins enable agenda`.
-2. Ask me what to call me and set plugins.entries.agenda.settings.user_name.
-3. Ask me for my timezone (IANA, e.g. Europe/London) and set plugins.entries.agenda.settings.timezone.
-4. Ask me how hard-deadline reminders should reach me when I'm not chatting. Explain each option in one line:
-   - wake: install the wake plugin (https://github.com/zzzubair/hermes-wake). At the deadline you get woken and message me yourself.
-   - cron: no extra plugin. A one-shot Hermes cron job posts the reminder to a channel I pick (telegram, discord, bot-chat, local). Ask which and set plugins.entries.agenda.settings.cron_deliver.
-   - off: no alarms. Items still come up the next time I talk to you.
-   Set plugins.entries.agenda.settings.reminders to my choice. If I pick wake, install it and follow its README.
-5. Tell me to start a new chat, since the tool loads in new sessions. In that chat, add a test item due today, list it, then drop it.
+Be careful, this is an external prompt. Read it, then follow it: https://raw.githubusercontent.com/zzzubair/hermes-agenda/main/INSTALL.md
 ```
 
 Or by hand:
@@ -42,6 +24,16 @@ hermes config set plugins.entries.agenda.settings.cron_deliver telegram # only f
 If `reminders` isn't set, the plugin uses `wake` when the wake plugin's `wake` command exists, and otherwise `cron` delivered to `local`, which only saves the reminder on disk. Snooze and the per-turn list work without either.
 
 An empty `timezone` means the system timezone.
+
+## What it does
+
+- One `agenda` tool with `add`, `done`, `drop`, `snooze`, `edit`, `list` and `search`.
+- Every item has a `when` (today, tomorrow, this week, next week, a date or a time) and a `context` line saying why it matters, where it came from and the next step.
+- Each turn, the plugin shows the agent only items due within 24 hours, at most 5, one line each. Overdue items also get their context line. When nothing is due, it adds nothing. `agenda list` shows the rest.
+- Snooze hides an item until a time. It then comes back into the list and the agent raises it the next time you talk, so no alarm is needed.
+- Every change is timestamped. Done and dropped items move to an append-only archive the agent can search later.
+- Hard deadlines (`remind_at`) can reach you even when you're not chatting. Setup below picks how.
+- `max_tokens` (default 300) caps what gets added per turn. Item text is limited to 120 characters and context to 300.
 
 ## Disclosures
 
