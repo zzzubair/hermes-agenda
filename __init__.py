@@ -13,14 +13,23 @@ from zoneinfo import ZoneInfo
 
 
 
-def _dir():
-    """$HERMES_HOME/agenda, resolved per call so a process serving several profiles uses the right one."""
+def _home():
+    """Active Hermes home, resolved per call so a process serving several profiles uses the right one."""
     try:
         from hermes_constants import get_hermes_home
-        home = Path(get_hermes_home())
+        return Path(get_hermes_home())
     except Exception:
-        home = Path(os.environ.get("HERMES_HOME") or os.path.expanduser("~/.hermes"))
-    return home / "agenda"
+        return Path(os.environ.get("HERMES_HOME") or os.path.expanduser("~/.hermes"))
+
+
+def _dir():
+    return _home() / "agenda"
+
+
+def _run(argv, timeout):
+    """Run a hermes CLI command in the active profile (the context-local home is not inherited by children)."""
+    return subprocess.run(argv, capture_output=True, text=True, timeout=timeout,
+                          env={**os.environ, "HERMES_HOME": str(_home())})
 
 
 def _open_f():
@@ -162,7 +171,7 @@ def _wake(cmd, *args):
     backend = _backend()
     try:
         if cmd == "cancel" and args and str(args[0]).startswith("cron:"):
-            subprocess.run(["hermes", "cron", "remove", args[0][5:]], capture_output=True, timeout=30)
+            _run(["hermes", "cron", "remove", args[0][5:]], 30)
             return None
         if backend == "off":
             return None
@@ -170,13 +179,12 @@ def _wake(cmd, *args):
             if cmd != "add" or _cron_blocked():
                 return None
             when = datetime.strptime(args[0], "%Y-%m-%d %H:%M").replace(tzinfo=_tz())
-            out = subprocess.run(["hermes", "cron", "create", when.isoformat(timespec="minutes"), args[1],
-                                  "--name", "agenda-reminder", "--repeat", "1",
-                                  "--deliver", _setting("cron_deliver", "local")],
-                                 capture_output=True, text=True, timeout=30).stdout
+            out = _run(["hermes", "cron", "create", when.isoformat(timespec="minutes"), args[1],
+                        "--name", "agenda-reminder", "--repeat", "1",
+                        "--deliver", _setting("cron_deliver", "local")], 30).stdout
             m = re.search(r"Created job: ([0-9a-f]{12})", out)
             return f"cron:{m[1]}" if m else None
-        out = subprocess.run(["hermes", "wake", cmd, *args], capture_output=True, text=True, timeout=30).stdout
+        out = _run(["hermes", "wake", cmd, *args], 30).stdout
         m = re.search(r"wake ([0-9a-f]{12})", out)
         return m[1] if m else None
     except Exception:
