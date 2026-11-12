@@ -4,16 +4,35 @@ Open items live in $HERMES_HOME/agenda/open.json. Ticked or dropped items move t
 $HERMES_HOME/agenda/archive.jsonl (append-only, searchable) so nothing is lost.
 Settings (user_name, timezone, reminders) come from plugins.entries.agenda.settings via the plugin context.
 A pre_llm_call hook shows the open list; one tool lets the model add, tick,
-drop, snooze, edit and search. Reminders reuse the `wake` CLI.
+drop, snooze, edit and search. Reminders use `hermes wake` or a one-shot `hermes cron` job.
 """
-import hashlib, json, os, re, secrets, shutil, subprocess, time
+import hashlib, json, os, re, secrets, subprocess, time
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-HOME = Path(os.environ.get("HERMES_HOME") or os.path.expanduser("~/.hermes"))
-DIR = HOME / "agenda"
-OPEN, ARCHIVE, STATE = DIR / "open.json", DIR / "archive.jsonl", DIR / "seen.json"
+
+
+def _dir():
+    """$HERMES_HOME/agenda, resolved per call so a process serving several profiles uses the right one."""
+    try:
+        from hermes_constants import get_hermes_home
+        home = Path(get_hermes_home())
+    except Exception:
+        home = Path(os.environ.get("HERMES_HOME") or os.path.expanduser("~/.hermes"))
+    return home / "agenda"
+
+
+def _open_f():
+    return _dir() / "open.json"
+
+
+def _archive_f():
+    return _dir() / "archive.jsonl"
+
+
+def _seen_f():
+    return _dir() / "seen.json"
 SOFT_CAP = 15
 TEXT_MAX, CONTEXT_MAX = 120, 300  # chars per item; enforced on add/edit
 DETAIL_HOURS = 48  # `agenda list`: items due this soon show their context line
@@ -91,23 +110,56 @@ def _fmt(iso):
 
 def _load():
     try:
-        return json.loads(OPEN.read_text())
+        return json.loads(_open_f().read_text())
     except Exception:
         return []
 
 
 def _save(items):
-    DIR.mkdir(parents=True, exist_ok=True)
-    tmp = OPEN.with_suffix(".tmp")
+    f = _open_f()
+    f.parent.mkdir(parents=True, exist_ok=True)
+    tmp = f.with_suffix(".tmp")
     tmp.write_text(json.dumps(items, indent=1, ensure_ascii=False))
-    os.replace(tmp, OPEN)
+    os.replace(tmp, f)
+
+
+def _cfg(*keys, default=None):
+    try:
+        from hermes_cli.config import cfg_get, load_config
+        return cfg_get(load_config(), *keys, default=default)
+    except Exception:
+        return default
+
+
+def _wake_enabled():
+    """True when the wake plugin is enabled in this profile (plugins.enabled, not plugins.disabled)."""
+    enabled, disabled = _cfg("plugins", "enabled", default=[]), _cfg("plugins", "disabled", default=[])
+    return isinstance(enabled, list) and "wake" in enabled and not (isinstance(disabled, list) and "wake" in disabled)
+
+
+def _truthy(v):
+    return str(v).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _cron_blocked():
+    """Inside a cron run, scheduling a new cron job needs cron.allow_agent_scheduling (same switch as core's cronjob tool)."""
+    try:
+        from gateway.session_context import get_session_env
+        in_cron = _truthy(get_session_env("HERMES_CRON_SESSION", ""))
+    except Exception:
+        in_cron = _truthy(os.environ.get("HERMES_CRON_SESSION", ""))
+    return in_cron and not _truthy(_cfg("cron", "allow_agent_scheduling", default=False))
+
+
+def _backend():
+    return _setting("reminders", "wake" if _wake_enabled() else "cron")
 
 
 def _wake(cmd, *args):
     """Hard-deadline alarms. Backend from settings.reminders: "wake" (wake plugin: the agent itself
-    is woken in your chat), "cron" (one-shot Hermes cron job delivered to settings.cron_deliver),
-    or "off". Returns an id ("cron:<id>" for cron) or None."""
-    backend = _setting("reminders", "wake" if shutil.which("wake") or (HOME / "bin" / "wake").exists() else "cron")
+    is woken in your chat, via `hermes wake`), "cron" (one-shot Hermes cron job delivered to
+    settings.cron_deliver), or "off". Returns an id ("cron:<id>" for cron) or None."""
+    backend = _backend()
     try:
         if cmd == "cancel" and args and str(args[0]).startswith("cron:"):
             subprocess.run(["hermes", "cron", "remove", args[0][5:]], capture_output=True, timeout=30)
@@ -115,7 +167,7 @@ def _wake(cmd, *args):
         if backend == "off":
             return None
         if backend == "cron":
-            if cmd != "add":
+            if cmd != "add" or _cron_blocked():
                 return None
             when = datetime.strptime(args[0], "%Y-%m-%d %H:%M").replace(tzinfo=_tz())
             out = subprocess.run(["hermes", "cron", "create", when.isoformat(timespec="minutes"), args[1],
@@ -124,8 +176,7 @@ def _wake(cmd, *args):
                                  capture_output=True, text=True, timeout=30).stdout
             m = re.search(r"Created job: ([0-9a-f]{12})", out)
             return f"cron:{m[1]}" if m else None
-        exe = shutil.which("wake") or str(HOME / "bin" / "wake")
-        out = subprocess.run([exe, cmd, *args], capture_output=True, text=True, timeout=20).stdout
+        out = subprocess.run(["hermes", "wake", cmd, *args], capture_output=True, text=True, timeout=30).stdout
         m = re.search(r"wake ([0-9a-f]{12})", out)
         return m[1] if m else None
     except Exception:
@@ -133,10 +184,17 @@ def _wake(cmd, *args):
 
 
 def _set_wake(item, when, why):
+    """Set the item's alarm; returns a note for the model when no alarm could be set."""
     if item.get("wake_id"):
-        _wake("cancel", item["wake_id"])
-    item["wake_id"] = _wake("add", when.strftime("%Y-%m-%d %H:%M"),
-                            f"Agenda [{item['id']}] {why}: {item['text']}. Check it, then act or message {_user()}; update the agenda.")
+        _wake("cancel", item.pop("wake_id"))
+    if _backend() == "cron" and _cron_blocked():
+        return "reminder not set: this is a cron run and cron.allow_agent_scheduling is off"
+    wid = _wake("add", when.strftime("%Y-%m-%d %H:%M"),
+                f"Agenda [{item['id']}] {why}: {item['text']}. Check it, then act or message {_user()}; update the agenda.")
+    if wid:
+        item["wake_id"] = wid
+        return ""
+    return "" if _backend() == "off" else "reminder not set: the reminder backend did not confirm it"
 
 
 def _render(items, now, budget=None):
@@ -220,7 +278,7 @@ def on_pre_llm_call(**kw):
             return None
         h = hashlib.sha1(body.encode()).hexdigest()[:10]
         try:
-            seen = json.loads(STATE.read_text())
+            seen = json.loads(_seen_f().read_text())
         except Exception:
             seen = {}
         prev = seen.get(sid, {})
@@ -228,8 +286,8 @@ def on_pre_llm_call(**kw):
         if full:
             seen[sid] = {"h": h, "t": time.time()}
             seen = dict(sorted(seen.items(), key=lambda kv: kv[1]["t"])[-200:])
-            DIR.mkdir(parents=True, exist_ok=True)
-            STATE.write_text(json.dumps(seen))
+            _dir().mkdir(parents=True, exist_ok=True)
+            _seen_f().write_text(json.dumps(seen))
             return {"context": body}
         return {"context": body.split(" (tool", 1)[0] + ", unchanged since last shown."}
     except Exception:
@@ -245,7 +303,8 @@ def _archive(it, status, note):
     _log(it, status, note or "")
     if it.get("wake_id"):
         _wake("cancel", it["wake_id"])
-    with ARCHIVE.open("a") as f:
+    _dir().mkdir(parents=True, exist_ok=True)
+    with _archive_f().open("a") as f:
         f.write(json.dumps(it, ensure_ascii=False) + "\n")
 
 
@@ -277,11 +336,10 @@ def handle(args, **_):
                   "when": _parse_when(args["when"]).isoformat(timespec="minutes"),
                   "context": args["context"].strip()}
             _log(it, "added", f"when {_fmt(it['when'])}")
-            if args.get("remind_at"):
-                _set_wake(it, _parse_when(args["remind_at"]), "reminder")
+            note = _set_wake(it, _parse_when(args["remind_at"]), "reminder") if args.get("remind_at") else ""
             items.append(it)
             _save(items)
-            return f"added [{it['id']}]" + (f", wake {it.get('wake_id')}" if it.get("wake_id") else "")
+            return f"added [{it['id']}]" + (f", wake {it.get('wake_id')}" if it.get("wake_id") else "") + (f"; {note}" if note else "")
         if a in ("done", "drop"):
             it = find(args.get("id"))
             if not it:
@@ -310,15 +368,14 @@ def handle(args, **_):
                     it[k] = args[k]
             if args.get("when"):
                 it["when"] = _parse_when(args["when"]).isoformat(timespec="minutes")
-            if args.get("remind_at"):
-                _set_wake(it, _parse_when(args["remind_at"]), "reminder")
+            note = _set_wake(it, _parse_when(args["remind_at"]), "reminder") if args.get("remind_at") else ""
             _log(it, "edited", ", ".join(k for k in ("text", "owner", "context", "when", "remind_at") if args.get(k)))
             _save(items)
-            return f"edited [{it['id']}]"
+            return f"edited [{it['id']}]" + (f"; {note}" if note else "")
         if a == "search":
             q, out = (args.get("query") or "").lower(), []
-            if ARCHIVE.exists():
-                for line in ARCHIVE.read_text().splitlines():
+            if _archive_f().exists():
+                for line in _archive_f().read_text().splitlines():
                     if q in line.lower():
                         r = json.loads(line)
                         hist = "; ".join(f"{_fmt(t)} {a}{' ' + d if d else ''}" for t, a, d in r.get("history", []))

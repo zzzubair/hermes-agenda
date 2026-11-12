@@ -21,7 +21,7 @@ That's enough to start. Optional settings, under `plugins.entries.agenda.setting
 
 - `user_name`: what the agent calls you. Empty means "the user".
 - `timezone`: an IANA name such as `Asia/Tokyo`. Empty means the system timezone.
-- `reminders`: `wake`, `cron` or `off`. Empty means `wake` if the wake plugin's `wake` command exists, otherwise `cron` delivered to `local`, which only saves the reminder on disk.
+- `reminders`: `wake`, `cron` or `off`. Empty means `wake` if the wake plugin is enabled, otherwise `cron` delivered to `local`, which only saves the reminder on disk.
 - `cron_deliver`: where `cron` reminders go, such as `telegram` or `discord`.
 - `max_tokens`: cap on what gets added per turn. Default 300.
 
@@ -41,7 +41,7 @@ Snooze and the per-turn list work with none of these set.
 
 - `pre_llm_call` runs on every turn and adds up to `max_tokens` of due items, or nothing. Subagent turns get nothing.
 - Data is stored in plaintext under `$HERMES_HOME/agenda/`: `open.json` for open items, `archive.jsonl` for closed ones (append-only) and `seen.json`, which records what each chat was last shown. No message text is stored.
-- Shell commands run only for hard-deadline reminders. With `reminders: wake` the plugin runs the wake plugin's `wake add` and `wake cancel`. With `cron` it runs `hermes cron create` and `hermes cron remove` for one-shot jobs named `agenda-reminder`. With `off` it runs nothing.
+- Shell commands run only for hard-deadline reminders. With `reminders: wake` the plugin runs `hermes wake add` and `hermes wake cancel`. With `cron` it runs `hermes cron create` and `hermes cron remove` for one-shot jobs named `agenda-reminder`; inside a cron run it creates none unless `cron.allow_agent_scheduling` is on. With `off` it runs nothing.
 - No network calls, credentials, telemetry or background processes.
 
 MIT licensed.

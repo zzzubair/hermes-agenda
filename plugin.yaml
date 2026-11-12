@@ -1,5 +1,5 @@
 name: agenda
-version: "1.0.0"
+version: "1.0.1"
 author: Zubair Shaik
 requires_hermes: ">=0.23.0"
 description: "The agent's running todo list: shown every turn, one `agenda` tool to add/tick/drop/snooze/edit/search; closed items go to a searchable archive; reminders via the wake plugin."
